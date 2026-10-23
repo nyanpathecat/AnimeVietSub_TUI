@@ -106,6 +106,15 @@ INSTALLED_SUCCESS=0
 
 # Cách 3a: Nếu đang chạy trực tiếp từ thư mục chứa mã nguồn/build sẵn
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd)"
+
+# Có thể tự build nếu có Go, và có sẵn mã nguồn hoặc git để clone.
+CAN_BUILD=0
+if command -v go >/dev/null 2>&1; then
+    if [ -d "$SCRIPT_DIR/cmd/avs" ] || command -v git >/dev/null 2>&1; then
+        CAN_BUILD=1
+    fi
+fi
+
 if [ -f "$SCRIPT_DIR/$BINARY_NAME" ]; then
     info "Phát hiện binary có sẵn tại thư mục: $SCRIPT_DIR/$BINARY_NAME"
     $SUDO cp -f "$SCRIPT_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
@@ -118,8 +127,9 @@ elif [ -f "./$BINARY_NAME" ]; then
     INSTALLED_SUCCESS=1
 fi
 
-# Cách 3b: Tải từ GitHub Releases (nếu chưa cài từ local)
-if [ $INSTALLED_SUCCESS -eq 0 ]; then
+# Cách 3b: Tải từ GitHub Releases (chỉ khi không thể tự build,
+# vì binary trong release có thể cũ hơn mã nguồn hiện tại)
+if [ $INSTALLED_SUCCESS -eq 0 ] && [ $CAN_BUILD -eq 0 ]; then
     RELEASE_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}_${TARGET_OS}_${TARGET_ARCH}"
     FALLBACK_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
     TARGET_BIN="$TMP_DIR/$BINARY_NAME"
@@ -150,35 +160,33 @@ if [ $INSTALLED_SUCCESS -eq 0 ]; then
     fi
 fi
 
-# Cách 3c: Nếu không tải được release, kiểm tra Go để tự build tự động
-if [ $INSTALLED_SUCCESS -eq 0 ]; then
-    if command -v go >/dev/null 2>&1; then
-        info "Không tìm thấy pre-built release, hệ thống có Go -> Đang tự động biên dịch mã nguồn..."
-        BUILD_SRC_DIR="$TMP_DIR/src"
-        if [ -d "$SCRIPT_DIR/cmd/avs" ]; then
-            BUILD_SRC_DIR="$SCRIPT_DIR"
-        else
-            info "Đang clone mã nguồn mới nhất từ GitHub..."
-            git clone --depth 1 "https://github.com/${REPO}.git" "$BUILD_SRC_DIR"
-        fi
-        (
-            cd "$BUILD_SRC_DIR"
-            go build -ldflags="-s -w" -o "$TMP_DIR/$BINARY_NAME" cmd/avs/main.go
-        )
-        $SUDO cp -f "$TMP_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
-        $SUDO chmod 755 "$INSTALL_DIR/$BINARY_NAME"
-        INSTALLED_SUCCESS=1
+# Cách 3c: Tự build từ mã nguồn (ưu tiên khi có Go)
+if [ $INSTALLED_SUCCESS -eq 0 ] && [ $CAN_BUILD -eq 1 ]; then
+    info "Hệ thống có Go -> Đang tự động biên dịch mã nguồn mới nhất..."
+    BUILD_SRC_DIR="$TMP_DIR/src"
+    if [ -d "$SCRIPT_DIR/cmd/avs" ]; then
+        BUILD_SRC_DIR="$SCRIPT_DIR"
     else
-        error "Không thể tải binary build sẵn và máy bạn chưa cài đặt Golang để tự build."
-        echo -e "Vui lòng cài đặt Go (https://go.dev) hoặc tải binary thủ công từ:"
-        echo -e "https://github.com/${REPO}/releases\n"
-        exit 1
+        info "Đang clone mã nguồn mới nhất từ GitHub..."
+        git clone --depth 1 "https://github.com/${REPO}.git" "$BUILD_SRC_DIR"
     fi
+    (
+        cd "$BUILD_SRC_DIR"
+        go build -ldflags="-s -w" -o "$TMP_DIR/$BINARY_NAME" cmd/avs/main.go
+    )
+    $SUDO cp -f "$TMP_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+    $SUDO chmod 755 "$INSTALL_DIR/$BINARY_NAME"
+    INSTALLED_SUCCESS=1
 fi
 
-if [ $INSTALLED_SUCCESS -eq 1 ]; then
-    success "Đã cài đặt thành công '$BINARY_NAME' vào: $INSTALL_DIR/$BINARY_NAME"
+if [ $INSTALLED_SUCCESS -eq 0 ]; then
+    error "Không thể tải binary build sẵn và cũng không thể tự build từ mã nguồn."
+    echo -e "Vui lòng cài đặt Go (https://go.dev) hoặc tải binary thủ công từ:"
+    echo -e "https://github.com/${REPO}/releases\n"
+    exit 1
 fi
+
+success "Đã cài đặt thành công '$BINARY_NAME' vào: $INSTALL_DIR/$BINARY_NAME"
 
 # 4. Kiểm tra biến môi trường PATH
 if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then

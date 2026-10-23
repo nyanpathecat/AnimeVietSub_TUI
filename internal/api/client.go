@@ -330,6 +330,11 @@ func (c *Client) GetFilmDetail(ctx context.Context, filmURL string) (*AnimeDetai
 
 // GetBackupServers lấy danh sách server dự phòng qua POST /ajax/player với episodeId={id}&backup=1.
 func (c *Client) GetBackupServers(ctx context.Context, episodeID string) ([]ServerItem, error) {
+	episodeID = strings.TrimSpace(episodeID)
+	if episodeID == "" {
+		return nil, fmt.Errorf("tập phim không có episodeId")
+	}
+
 	form := url.Values{}
 	form.Set("episodeId", episodeID)
 	form.Set("backup", "1")

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -15,6 +16,10 @@ type backupResponse struct {
 
 // ParseBackupServers phân tích phản hồi JSON từ POST /ajax/player?backup=1 để lấy danh sách server.
 func ParseBackupServers(data []byte) ([]ServerItem, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, fmt.Errorf("máy chủ trả về phản hồi rỗng (thiếu episodeId hoặc phiên đăng nhập bị chặn)")
+	}
+
 	var resp backupResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("không thể giải mã JSON backup servers: %w", err)

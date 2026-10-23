@@ -136,6 +136,19 @@ func (m ServersModel) resolveServer(server api.ServerItem) tea.Cmd {
 	}
 }
 
+func (m ServersModel) resolveEpisodeByHash() tea.Cmd {
+	hash := m.episode.Hash
+	id := m.episode.ID
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		resp, err := m.client.ResolveEpisodeByHash(ctx, hash, id)
+		return playerSourceResolvedMsg{response: resp, err: err}
+	}
+}
+
 func (m *ServersModel) recordHistory() {
 	animeURL := m.animeURL
 	if animeURL == "" {
@@ -163,6 +176,11 @@ func (m ServersModel) Update(msg tea.Msg) (ServersModel, tea.Cmd) {
 
 	case backupServersLoadedMsg:
 		if msg.err != nil {
+			// Lỗi tạm thời khi lấy danh sách server: vẫn có thể phát trực tiếp bằng hash của tập.
+			if m.episode.ID != "" && m.episode.Hash != "" {
+				m.state = ServerStateResolving
+				return m, tea.Batch(m.spinner.Tick, m.resolveEpisodeByHash())
+			}
 			m.state = ServerStatePlaybackInfo
 			m.playbackErr = fmt.Errorf("không thể lấy danh sách server: %w", msg.err)
 			return m, nil
@@ -170,14 +188,9 @@ func (m ServersModel) Update(msg tea.Msg) (ServersModel, tea.Cmd) {
 
 		if len(msg.servers) == 0 {
 			// Nếu không có backup server, thử dùng hash của tập
-			if m.episode.Hash != "" {
+			if m.episode.ID != "" && m.episode.Hash != "" {
 				m.state = ServerStateResolving
-				return m, tea.Batch(m.spinner.Tick, func() tea.Msg {
-					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-					defer cancel()
-					resp, err := m.client.ResolveEpisodeByHash(ctx, m.episode.Hash, m.episode.ID)
-					return playerSourceResolvedMsg{response: resp, err: err}
-				})
+				return m, tea.Batch(m.spinner.Tick, m.resolveEpisodeByHash())
 			}
 			m.state = ServerStatePlaybackInfo
 			m.playbackErr = fmt.Errorf("không tìm thấy nguồn server phát cho tập này")

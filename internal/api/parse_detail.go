@@ -8,10 +8,20 @@ import (
 )
 
 var (
-	reFilmID  = regexp.MustCompile(`filmInfo\.filmID\s*=\s*(?:parseInt\(['"]?)?(\d+)`)
-	reTitle   = regexp.MustCompile(`filmInfo\.title\s*=\s*["']([^"']+)["']`)
-	reFullURL = regexp.MustCompile(`filmInfo\.fullUrl\s*=\s*["']([^"']+)["']`)
+	reFilmID            = regexp.MustCompile(`filmInfo\.filmID\s*=\s*(?:parseInt\(['"]?)?(\d+)`)
+	reTitle             = regexp.MustCompile(`filmInfo\.title\s*=\s*["']([^"']+)["']`)
+	reFullURL           = regexp.MustCompile(`filmInfo\.fullUrl\s*=\s*["']([^"']+)["']`)
+	reEpisodeIDFromHref = regexp.MustCompile(`-(\d+)(?:\.html)?/?$`)
 )
+
+// episodeIDFromHref lấy ID tập phim từ URL dạng /tap-01-116024.html
+// dùng khi thẻ <a> không có thuộc tính data-id.
+func episodeIDFromHref(href string) string {
+	if m := reEpisodeIDFromHref.FindStringSubmatch(href); len(m) > 1 {
+		return m[1]
+	}
+	return ""
+}
 
 // ParseEpisodes phân tích danh sách tập phim từ cấu trúc thẻ <ul class="list-episode">.
 func ParseEpisodes(htmlContent string) ([]Episode, error) {
@@ -31,15 +41,24 @@ func ParseEpisodes(htmlContent string) ([]Episode, error) {
 			title = strings.TrimSpace(s.Text())
 		}
 
-		if id != "" || hash != "" || title != "" {
-			episodes = append(episodes, Episode{
-				ID:       id,
-				Hash:     hash,
-				PlayTech: playTech,
-				Title:    title,
-				URL:      href,
-			})
+		// Một số trang không còn gắn data-id; lấy ID từ URL tập phim.
+		if id == "" {
+			id = episodeIDFromHref(href)
 		}
+
+		// Không có ID thì API /ajax/player không thể trả nguồn phát,
+		// nên bỏ qua thay vì hiển thị một tập không phát được.
+		if id == "" {
+			return
+		}
+
+		episodes = append(episodes, Episode{
+			ID:       id,
+			Hash:     hash,
+			PlayTech: playTech,
+			Title:    title,
+			URL:      href,
+		})
 	})
 
 	return episodes, nil
