@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 #  AnimeVietSub TUI (avs) - Trình Gỡ Cài Đặt Tự Động (Uninstaller)
-#  GitHub: https://github.com/nguyentuandungptit/AnimeVietSub_TUI
+#  GitHub: https://github.com/nyanpathecat/AnimeVietSub_TUI
 # ==============================================================================
 
 set -e

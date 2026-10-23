@@ -11,7 +11,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-REPO="nguyentuandungptit/AnimeVietSub_TUI"
+REPO="nyanpathecat/AnimeVietSub_TUI"
 BINARY_NAME="avs"
 
 info() {

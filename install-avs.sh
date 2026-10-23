@@ -2,7 +2,7 @@
 # AnimeVietSub TUI (avs) - quick installer
 set -e
 
-REPO="nguyentuandungptit/AnimeVietSub_TUI"
+REPO="nyanpathecat/AnimeVietSub_TUI"
 INSTALL_DIR="${HOME}/.local/bin"
 TMP_DIR="$(mktemp -d)"
 BINARY_NAME="avs"

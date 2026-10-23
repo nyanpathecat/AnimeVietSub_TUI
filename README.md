@@ -85,12 +85,12 @@ Cách này phù hợp nhất nếu bạn muốn cài đặt nhanh chóng vào h�
 
 #### Chạy lệnh cài đặt One-Liner qua `curl`:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nyanpathecat/AnimeVietSub_TUI/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nyanpathecat/AnimeVietSub_TUI/main/install.sh | bash
 ```
 
 #### Hoặc sử dụng `wget`:
 ```bash
-wget -qO- https://raw.githubusercontent.com/nyanpathecat/AnimeVietSub_TUI/master/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/nyanpathecat/AnimeVietSub_TUI/main/install.sh | bash
 ```
 
 #### Hoặc nếu bạn đã tải/clone repo về máy:
@@ -239,7 +239,7 @@ Cách nhanh nhất và sạch sẽ nhất. Script sẽ tự động quét mọi 
 
 #### Chạy lệnh gỡ cài đặt trực tiếp qua `curl`:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nyanpathecat/AnimeVietSub_TUI/master/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nyanpathecat/AnimeVietSub_TUI/main/uninstall.sh | bash
 ```
 
 #### Hoặc chạy file script có sẵn trong repo:
