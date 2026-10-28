@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"avs-tui/internal/api"
 	"avs-tui/internal/config"
@@ -103,7 +102,7 @@ func (m AppModel) Init() tea.Cmd {
 
 func (m AppModel) warmupClient() tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), api.FetchTimeout)
 		defer cancel()
 		_ = m.client.Warmup(ctx)
 		return nil

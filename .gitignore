@@ -1,0 +1,10 @@
+# Built binaries
+/avs
+/avs.exe
+/dist/
+
+# Local runtime config
+.avs_config.json
+
+# Editor / OS noise
+.DS_Store

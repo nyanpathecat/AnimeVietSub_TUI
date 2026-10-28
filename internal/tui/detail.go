@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"avs-tui/internal/api"
 	"avs-tui/internal/config"
@@ -80,7 +79,7 @@ func (m *DetailModel) LoadAnime(item api.AnimeItem) tea.Cmd {
 
 func (m DetailModel) fetchDetail(url string) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), api.FetchTimeout)
 		defer cancel()
 
 		detail, err := m.client.GetFilmDetail(ctx, url)

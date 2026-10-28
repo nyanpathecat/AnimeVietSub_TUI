@@ -6,7 +6,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -126,6 +128,27 @@ func FindChromiumBinary() string {
 		"brave-browser",
 		"brave",
 		"microsoft-edge",
+	}
+
+	// Windows không có các tên binary kiểu Unix ở trên; Edge/Chrome/Brave nằm trong
+	// Program Files hoặc LocalAppData. Thêm các đường dẫn tuyệt đối để chế độ
+	// Standalone Web Player (--app) hoạt động trên Windows.
+	if runtime.GOOS == "windows" {
+		candidates = append(candidates, "chrome.exe", "msedge.exe", "brave.exe")
+		for _, base := range []string{
+			os.Getenv("ProgramFiles"),
+			os.Getenv("ProgramFiles(x86)"),
+			os.Getenv("LocalAppData"),
+		} {
+			if base == "" {
+				continue
+			}
+			candidates = append(candidates,
+				filepath.Join(base, `Google\Chrome\Application\chrome.exe`),
+				filepath.Join(base, `Microsoft\Edge\Application\msedge.exe`),
+				filepath.Join(base, `BraveSoftware\Brave-Browser\Application\brave.exe`),
+			)
+		}
 	}
 
 	for _, name := range candidates {

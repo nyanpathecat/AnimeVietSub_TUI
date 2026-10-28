@@ -133,7 +133,7 @@ func (m *SearchModel) triggerDebounce(keyword string) tea.Cmd {
 // fetchSuggestions gửi request POST /ajax/suggest để lấy gợi ý tìm kiếm.
 func (m SearchModel) fetchSuggestions(reqID int, keyword string) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), api.FetchTimeout)
 		defer cancel()
 
 		suggs, err := m.client.GetSearchSuggestions(ctx, keyword)
@@ -148,7 +148,7 @@ func (m SearchModel) fetchSuggestions(reqID int, keyword string) tea.Cmd {
 // fetchSearchResults gửi request tìm kiếm đầy đủ theo từ khóa và trang.
 func (m SearchModel) fetchSearchResults(keyword string, page int) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), api.FetchTimeout)
 		defer cancel()
 
 		res, err := m.client.SearchAnime(ctx, keyword, page)

@@ -25,6 +25,7 @@
 - [Hướng Dẫn Sử Dụng](#-hướng-dẫn-sử-dụng)
   - [Khởi chạy](#khởi-chạy)
   - [Bảng phím tắt điều hướng](#bảng-phím-tắt-điều-hướng)
+- [Vượt Cloudflare (FlareSolverr)](#vượt-cloudflare-flaresolverr)
 - [Cấu Hình & Tùy Biến](#-cấu-hình--tùy-biến)
 - [Cấu Trúc Thư Mục](#-cấu-trúc-thư-mục)
 - [Hướng Dẫn Gỡ Cài Đặt](#-hướng-dẫn-gỡ-cài-đặt)
@@ -64,7 +65,7 @@
 
 ## 📋 Yêu Cầu Hệ Thống
 
-1. **Hệ điều hành:** Linux, macOS, hoặc Windows (qua WSL / Git Bash / Terminal).
+1. **Hệ điều hành:** Linux, macOS, hoặc Windows (Windows Terminal / PowerShell / Git Bash — không bắt buộc WSL).
 2. **Trình phát video (Khuyến nghị):** Cài đặt **[mpv](https://mpv.io/)** để có trải nghiệm xem phim trực tiếp tốt nhất.
    - **Ubuntu / Debian:** `sudo apt update && sudo apt install -y mpv`
    - **Arch Linux:** `sudo pacman -S mpv`
@@ -72,6 +73,7 @@
    - **macOS:** `brew install mpv`
    - **Windows:** `winget install shinchiro.mpv`
 3. **Golang (Chỉ cần nếu tự build từ mã nguồn):** Phiên bản Go `>= 1.22`.
+4. **FlareSolverr (khuyến nghị):** Cần khi website bật lớp xác minh Cloudflare — xem [Vượt Cloudflare](#vượt-cloudflare-flaresolverr).
 
 ---
 
@@ -92,6 +94,20 @@ curl -fsSL https://raw.githubusercontent.com/nyanpathecat/AnimeVietSub_TUI/main/
 ```bash
 wget -qO- https://raw.githubusercontent.com/nyanpathecat/AnimeVietSub_TUI/main/install.sh | bash
 ```
+
+#### Windows (Windows Terminal / PowerShell)
+
+`install.sh` là script bash nên trên Windows Terminal hãy tải thẳng binary:
+
+```powershell
+# Tải avs.exe vào thư mục hiện tại
+curl.exe -L -o avs.exe https://github.com/nyanpathecat/AnimeVietSub_TUI/releases/latest/download/avs.exe
+
+# Chạy thử
+.\avs.exe
+```
+
+Hoặc dùng one-liner ở trên nếu bạn đang chạy trong Git Bash / WSL.
 
 #### Hoặc nếu bạn đã tải/clone repo về máy:
 ```bash
@@ -122,7 +138,15 @@ make build
 
 # Cài đặt trực tiếp vào hệ thống (/usr/local/bin)
 sudo make install
+
+# Trên Windows Terminal / PowerShell: build ra avs.exe
+make build-windows
+
+# Biên dịch cho cả Windows và Linux
+make build-all
 ```
+
+> Mã nguồn không dùng cgo, nên bạn có thể cross-compile từ Linux/macOS ra `avs.exe` cho Windows và ngược lại mà không cần MinGW.
 
 ##### Lựa chọn 2.2: Sử dụng lệnh `go build`
 ```bash
@@ -177,6 +201,45 @@ avs
 
 ---
 
+## Vượt Cloudflare (FlareSolverr)
+
+Website thường bật lớp xác minh **Cloudflare Managed Challenge** ("Xác Minh An Toàn"). Khi đó mọi request HTTP thông thường đều nhận `HTTP 403`, hoặc tệ hơn là `HTTP 200` với nội dung rỗng khiến ứng dụng hiện "không có phim nào". Đây không phải lỗi mạng hay lỗi retry: chỉ trình duyệt thực thi JavaScript mới vượt được lớp này.
+
+`avs` tự xử lý qua **FlareSolverr** — một proxy chạy Chromium ẩn, chạy được giống nhau trên Windows Terminal và Linux:
+
+1. Gửi request trực tiếp trước (nhanh, không cần solver).
+2. Nếu nhận trang xác minh → gọi FlareSolverr để lấy cookie `cf_clearance` kèm đúng User-Agent đã dùng.
+3. Gửi lại request với phiên vừa có → nhận dữ liệu thật.
+4. Phiên được cache trong ~25 phút. Khi đổi router/mạng khiến cookie mất hiệu lực, ứng dụng tự xóa phiên và giải lại — nhờ vậy chạy được trên mọi mạng, không chỉ mạng đã dùng để đăng nhập.
+
+### Bật FlareSolverr
+
+**Windows (Windows Terminal / PowerShell) và Linux** dùng chung một lệnh:
+
+```bash
+docker run -d --name flaresolverr -p 8191:8191 flaresolverr/flaresolverr:latest
+```
+
+- **Windows:** cài Docker Desktop trước, sau đó chạy lệnh trên trong PowerShell.
+- **Ubuntu / Debian:** `sudo apt update && sudo apt install -y docker.io`
+- **Kiểm tra solver đã sẵn sàng:** `curl http://127.0.0.1:8191/health`
+
+Nếu Docker khởi động kèm máy, thêm `--restart unless-stopped` vào lệnh `docker run` để solver luôn sẵn sàng.
+
+### Tắt hoặc đổi địa chỉ solver
+
+- Biến môi trường (ưu tiên cao nhất):
+  ```bash
+  # Windows PowerShell: $env:AVS_SOLVER_URL = "http://127.0.0.1:8191"
+  export AVS_SOLVER_URL="http://127.0.0.1:8191"
+  # Tắt hoàn toàn: export AVS_SOLVER_URL=off
+  ```
+- Hoặc khóa `solver_url` trong `.avs_config.json` (xem mục dưới).
+
+Khi solver tắt hoặc không chạy, ứng dụng báo rõ *"máy chủ yêu cầu xác minh Cloudflare"* kèm lệnh cần chạy, thay vì chỉ hiện `HTTP 403`.
+
+---
+
 ## ⚙️ Cấu Hình & Tùy Biến
 
 Ứng dụng lưu cấu hình tại file `.avs_config.json` và lịch sử xem tại `.avs_history.json`.
@@ -189,7 +252,8 @@ Bạn có thể thay đổi thiết lập trực tiếp trong màn hình **Cấu
   "auto_open_browser_iframe": false,
   "player_mode": "auto",
   "preferred_quality": "1080p",
-  "theme_mode": "terminal"
+  "theme_mode": "terminal",
+  "solver_url": "http://127.0.0.1:8191"
 }
 ```
 
@@ -201,6 +265,7 @@ Bạn có thể thay đổi thiết lập trực tiếp trong màn hình **Cấu
   - `browser`: Luôn mở qua trình duyệt mặc định.
 - **`preferred_quality`**: Chất lượng phát mặc định (`1080p`, `720p`, hoặc `auto`).
 - **`theme_mode`**: Giao diện màu (`terminal`, `dark`, hoặc `light`).
+- **`solver_url`**: Địa chỉ FlareSolverr dùng để vượt Cloudflare (mặc định `http://127.0.0.1:8191`). Đặt `"off"` để tắt solver.
 
 ---
 

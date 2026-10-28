@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"avs-tui/internal/api"
 	"avs-tui/internal/config"
@@ -75,7 +74,7 @@ func (m HomeModel) loadCurrentTab() tea.Cmd {
 	tab := m.tabs[m.activeTab]
 	tabIdx := m.activeTab
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), api.FetchTimeout)
 		defer cancel()
 
 		items, err := m.client.GetHomeItems(ctx, tab.Type)
