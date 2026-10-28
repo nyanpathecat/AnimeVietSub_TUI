@@ -1,0 +1,15 @@
+AnimeVietSub TUI (avs) - bản build mới
+Thời gian build : 2026-10-23 20:29:48 +0700
+Commit nguồn   : 0a2f76e
+GitHub         : https://github.com/nyanpathecat/AnimeVietSub_TUI
+Domain         : https://animevietsub.news
+Binary         : avs (9195783 bytes)
+SHA-256        : 31b779a295abf92799c9e0f2e1da7d4b2b626d98942d50480d4f2beaace3d063
+
+Cách chạy:
+  ./avs
+
+Cài vào máy (không cần sudo):
+  ./install-avs.sh
+
+Ghi chú: bản build này đã bao gồm các sửa lỗi backup server / redirect domain.
