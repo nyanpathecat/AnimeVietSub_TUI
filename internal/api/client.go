@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	DefaultBaseURL = "https://animevietsub.bid"
+	DefaultBaseURL = "https://animevietsub.sale"
 	DefaultUA      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 	MinReqInterval = 300 * time.Millisecond
 	DefaultTimeout = 10 * time.Second
@@ -29,7 +29,7 @@ const (
 	SolverTimeout = 60 * time.Second
 )
 
-// Client cung cấp giao thức giao tiếp HTTP chuẩn với animevietsub.bid.
+// Client cung cấp giao thức giao tiếp HTTP chuẩn với animevietsub.sale.
 type Client struct {
 	baseURL     string
 	httpClient  *http.Client

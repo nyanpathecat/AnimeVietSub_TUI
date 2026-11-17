@@ -32,7 +32,7 @@ type GenreItem struct {
 	Name string
 }
 
-// DefaultGenres danh sách các thể loại anime trên animevietsub.bid.
+// DefaultGenres danh sách các thể loại anime trên animevietsub.sale.
 var DefaultGenres = []GenreItem{
 	{Slug: "hanh-dong", Name: "Hành Động"},
 	{Slug: "phieu-luu", Name: "Phiêu Lưu"},

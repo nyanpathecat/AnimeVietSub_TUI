@@ -59,7 +59,7 @@ func looksLikeChallengeBody(body []byte) bool {
 //
 // Ba trường hợp được coi là challenge:
 //   - Nội dung chứa marker của Cloudflare (chắc chắn nhất).
-//   - HTTP 403: toàn bộ host animevietsub.bid nằm sau managed challenge nên 403
+//   - HTTP 403: toàn bộ host animevietsub.sale nằm sau managed challenge nên 403
 //     ở đây luôn là challenge, không phải "hết quyền truy cập".
 //   - 200 nhưng thân rỗng với endpoint bắt buộc phải có dữ liệu (requiresBody):
 //     /ajax/item và /ajax/player trả 0 byte khi bị chặn, đây chính là biểu hiện

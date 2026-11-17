@@ -46,7 +46,7 @@ func IsMPVInstalled() bool {
 // GetInstallInstructions trả về hướng dẫn cài đặt mpv.
 func GetInstallInstructions() string {
 	switch runtime.GOOS {
-	case "linux", "android":
+	case "linux":
 		return "mpv chưa được cài đặt. Bạn có thể cài đặt bằng lệnh:\n  - Ubuntu/Debian: sudo apt install mpv\n  - Fedora: sudo dnf install mpv\n  - Arch Linux: sudo pacman -S mpv"
 	case "darwin":
 		return "mpv chưa được cài đặt. Bạn có thể cài đặt bằng lệnh:\n  brew install mpv"
@@ -62,7 +62,7 @@ func GetInstallInstructions() string {
 // Đặt flag "--" trước URL để ngăn injection tham số.
 func BuildMPVCommand(videoURL, title string) *exec.Cmd {
 	ua := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-	referrer := "https://animevietsub.bid/"
+	referrer := "https://animevietsub.sale/"
 
 	args := []string{
 		"--really-quiet",
@@ -100,7 +100,7 @@ func OpenBrowser(targetURL string) error {
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
-	case "linux", "android":
+	case "linux":
 		cmd = exec.Command("xdg-open", targetURL)
 	case "windows":
 		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", targetURL)
