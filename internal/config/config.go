@@ -13,11 +13,14 @@ var ConfigFilePath = ".avs_config.json"
 
 // Config chứa các thiết lập của ứng dụng.
 type Config struct {
-	Language                 string `json:"language"`                    // "vi" hoặc "en"
-	AutoOpenBrowserForIframe bool   `json:"auto_open_browser_iframe"`    // Tự động mở browser khi gặp iframe/embed
-	PlayerMode               string `json:"player_mode"`                 // "auto" (Standalone cho Iframe, MPV cho Direct), "app_window", "browser", "mpv"
-	PreferredQuality         string `json:"preferred_quality"`           // "1080p", "720p", "auto"
-	ThemeMode                string `json:"theme_mode"`                  // "terminal" (mặc định theo Kitty/Foot), "light", "dark"
+	Language                 string `json:"language"`                 // "vi" hoặc "en"
+	AutoOpenBrowserForIframe bool   `json:"auto_open_browser_iframe"` // Tự động mở browser khi gặp iframe/embed
+	PlayerMode               string `json:"player_mode"`              // "auto" (Standalone cho Iframe, MPV cho Direct), "app_window", "browser", "mpv"
+	PreferredQuality         string `json:"preferred_quality"`        // "1080p", "720p", "auto"
+	ThemeMode                string `json:"theme_mode"`               // "terminal" (mặc định theo Kitty/Foot), "light", "dark"
+	// SolverURL là địa chỉ FlareSolverr dùng để vượt bước xác minh của Cloudflare.
+	// Để trống hoặc "off" nếu không muốn dùng; mặc định http://127.0.0.1:8191.
+	SolverURL string `json:"solver_url"`
 }
 
 var (
@@ -27,6 +30,7 @@ var (
 		PlayerMode:               "auto",
 		PreferredQuality:         "1080p",
 		ThemeMode:                "terminal",
+		SolverURL:                "http://127.0.0.1:8191",
 	}
 	cfgMu        sync.Mutex
 	cachedConfig *Config
@@ -71,6 +75,10 @@ func LoadConfig() *Config {
 	}
 	if cfg.ThemeMode == "" {
 		cfg.ThemeMode = "terminal"
+	}
+	// File cấu hình cũ chưa có khóa solver_url: điền giá trị mặc định.
+	if cfg.SolverURL == "" {
+		cfg.SolverURL = defaultConfig.SolverURL
 	}
 
 	cachedConfig = &cfg

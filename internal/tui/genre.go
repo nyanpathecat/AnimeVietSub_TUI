@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"avs-tui/internal/api"
 	"avs-tui/internal/config"
@@ -71,7 +70,7 @@ func (m GenreModel) loadCurrentGenre() tea.Cmd {
 	slug := m.genres[m.genreCursor].Slug
 	page := m.currentPage
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), api.FetchTimeout)
 		defer cancel()
 
 		res, err := m.client.GetGenreItems(ctx, slug, page)

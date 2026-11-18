@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,13 @@ const (
 	DefaultTimeout = 10 * time.Second
 	MaxRetries     = 2
 	MaxRedirects   = 5
+
+	// FetchTimeout là thời gian tối đa cho một lần tải dữ liệu ở tầng TUI.
+	// Phải lớn hơn thời gian FlareSolverr giải challenge, nếu không request sẽ bị hủy
+	// giữa lúc đang xác minh và người dùng chỉ thấy lỗi timeout.
+	FetchTimeout = 75 * time.Second
+	// SolverTimeout là timeout cho riêng các lần gọi FlareSolverr.
+	SolverTimeout = 60 * time.Second
 )
 
 // Client cung cấp giao thức giao tiếp HTTP chuẩn với animevietsub.sale.
@@ -27,6 +35,15 @@ type Client struct {
 	httpClient  *http.Client
 	mu          sync.Mutex
 	lastReqTime time.Time
+
+	// solverURL là địa chỉ FlareSolverr dùng để vượt Cloudflare (rỗng = tắt).
+	solverURL  string
+	solverHTTP *http.Client
+
+	// solverMu bảo vệ session; solveMu đảm bảo mỗi lúc chỉ một request đi giải challenge.
+	solverMu sync.RWMutex
+	solveMu  sync.Mutex
+	session  solverSession
 }
 
 // NewClient tạo Client mới với Cookie Jar và cấu hình mặc định.
@@ -51,7 +68,11 @@ func NewClient(baseURL string) (*Client, error) {
 				return http.ErrUseLastResponse
 			},
 		},
+		solverHTTP: &http.Client{Timeout: SolverTimeout},
 	}
+
+	// FlareSolverr: đọc AVS_SOLVER_URL nếu có, ngược lại dùng địa chỉ mặc định.
+	c.SetSolverURL(solverURLFromEnv())
 
 	return c, nil
 }
@@ -61,6 +82,13 @@ func (c *Client) SetHTTPClient(client *http.Client) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.httpClient = client
+}
+
+// currentHTTPClient trả về http.Client hiện hành (an toàn khi SetHTTPClient chạy song song).
+func (c *Client) currentHTTPClient() *http.Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.httpClient
 }
 
 // throttle đảm bảo khoảng cách giữa 2 request liên tiếp luôn >= 300ms.
@@ -96,18 +124,62 @@ func isRedirectStatus(code int) bool {
 	return false
 }
 
-// doRequest thực hiện gửi HTTP request với retry (tối đa 2 lần khi lỗi mạng) và rate-limiting.
-// Redirect được xử lý thủ công: khi tên miền đổi (301/302), POST vẫn giữ nguyên method và body
-// thay vì bị Go chuyển thành GET và mất dữ liệu (khiến /ajax/player trả về body rỗng).
+// doRequest gửi HTTP request và tự động vượt Cloudflare khi bị chặn.
+//
+// Luồng: thử request trực tiếp trước (nhanh, không cần solver). Nếu máy chủ trả về
+// trang xác minh, gọi FlareSolverr để lấy cf_clearance rồi gửi lại request với phiên đó.
+// Khi phiên cũ vẫn bị chặn (cookie hết hạn hoặc đổi router/IP), phiên được xóa và giải lại
+// một lần — nhờ vậy ứng dụng chạy được trên mọi mạng thay vì chỉ mạng đã đăng nhập.
 func (c *Client) doRequest(ctx context.Context, req *ClientRequest) ([]byte, error) {
 	var lastErr error
+	attempts := 0
+
+	for round := 0; round <= maxSolveRounds; round++ {
+		data, tries, err := c.performWithRetry(ctx, req)
+		attempts += tries
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+
+		// Chỉ challenge mới cần solver; lỗi mạng/HTTP khác thì dừng luôn.
+		if !errors.Is(err, ErrChallenge) {
+			break
+		}
+		if !c.solverEnabled() {
+			lastErr = fmt.Errorf("%w. Hãy bật FlareSolverr: docker run -d --name flaresolverr -p 8191:8191 flaresolverr/flaresolverr:latest (hoặc đặt AVS_SOLVER_URL)", ErrChallenge)
+			break
+		}
+		if round == maxSolveRounds {
+			break
+		}
+
+		// Phiên đang có (nếu có) vừa chứng minh không dùng được: bỏ và giải lại.
+		c.invalidateSession()
+		if solveErr := c.solve(ctx); solveErr != nil {
+			lastErr = solveErr
+			break
+		}
+	}
+
+	return nil, fmt.Errorf("thực hiện request %s thất bại sau %d lần thử: %w", req.URL, attempts, lastErr)
+}
+
+// performWithRetry thực hiện gửi HTTP request với retry (tối đa 2 lần khi lỗi mạng) và rate-limiting.
+// Redirect được xử lý thủ công: khi tên miền đổi (301/302), POST vẫn giữ nguyên method và body
+// thay vì bị Go chuyển thành GET và mất dữ liệu (khiến /ajax/player trả về body rỗng).
+// Trả về số lần đã thực sự gửi request để thông báo lỗi phản ánh đúng thực tế.
+func (c *Client) performWithRetry(ctx context.Context, req *ClientRequest) ([]byte, int, error) {
+	var lastErr error
+	attempts := 0
 
 	for attempt := 0; attempt <= MaxRetries; attempt++ {
+		attempts++
 		if attempt > 0 {
 			// Backoff nhẹ khi retry
 			select {
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return nil, attempts, ctx.Err()
 			case <-time.After(time.Duration(attempt*150) * time.Millisecond):
 			}
 		}
@@ -126,23 +198,33 @@ func (c *Client) doRequest(ctx context.Context, req *ClientRequest) ([]byte, err
 			}
 
 			if err := c.throttle(ctx); err != nil {
-				return nil, fmt.Errorf("hủy request trong lúc chờ rate limit: %w", err)
+				return nil, attempts, fmt.Errorf("hủy request trong lúc chờ rate limit: %w", err)
 			}
 
 			httpReq, err := http.NewRequestWithContext(ctx, method, reqURL, strings.NewReader(body))
 			if err != nil {
-				return nil, fmt.Errorf("không thể tạo request: %w", err)
+				return nil, attempts, fmt.Errorf("không thể tạo request: %w", err)
 			}
 
 			// Gán headers theo mục 4 của docs/API.md
-			httpReq.Header.Set("User-Agent", DefaultUA)
+			// Khi đã có phiên giải challenge, UA bắt buộc khớp đúng UA mà cf_clearance được cấp.
+			httpReq.Header.Set("User-Agent", c.userAgent())
+			httpReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+			httpReq.Header.Set("Accept-Language", "vi-VN,vi;q=0.9,en;q=0.8")
 			httpReq.Header.Set("Referer", referer)
+
+			// Dùng jar của http.Client là chính; chỉ gắn tay khi client không có jar.
+			if c.currentHTTPClient().Jar == nil {
+				for _, ck := range c.sessionCookies() {
+					httpReq.AddCookie(ck)
+				}
+			}
 			if req.IsAjax {
 				httpReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 				httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
 			}
 
-			resp, err := c.httpClient.Do(httpReq)
+			resp, err := c.currentHTTPClient().Do(httpReq)
 			if err != nil {
 				reqErr = err
 				break // Thử lại khi lỗi network transport
@@ -186,26 +268,37 @@ func (c *Client) doRequest(ctx context.Context, req *ClientRequest) ([]byte, err
 				continue
 			}
 
+			// Cloudflare: 403, trang xác minh, hoặc body rỗng ở endpoint bắt buộc có dữ liệu
+			// đều là challenge. Retry không giúp gì nên dừng ngay để chuyển sang solver.
+			if isChallengeResponse(resp.StatusCode, data, req.RequiresBody) {
+				reqErr = fmt.Errorf("%w: HTTP %d (%s)", ErrChallenge, resp.StatusCode, resp.Status)
+				break
+			}
+
 			// Với các request nghiệp vụ thông thường, nếu HTTP status code lỗi (>= 400) thì coi là thất bại
-			if resp.StatusCode >= 400 && reqURL != c.baseURL+"/" {
+			if resp.StatusCode >= 400 {
 				reqErr = fmt.Errorf("HTTP %d (%s)", resp.StatusCode, resp.Status)
 				break
 			}
 
-			// Cloudflare warmup: nếu trang đầu trả về 403 để gán cookie,
-			// cookiejar đã lưu session cookie. Trong tình huống này nếu chưa qua warmup thì coi như đã nhận cookie.
 			bodyBytes = data
 			reqErr = nil
 			break
 		}
 
 		if reqErr == nil {
-			return bodyBytes, nil
+			return bodyBytes, attempts, nil
 		}
 		lastErr = reqErr
+
+		// Challenge không phải lỗi tạm thời: trả về ngay để doRequest xử lý bằng solver
+		// thay vì đốt hết số lần retry (mỗi lần vẫn nhận lại đúng trang xác minh).
+		if errors.Is(reqErr, ErrChallenge) {
+			return nil, attempts, reqErr
+		}
 	}
 
-	return nil, fmt.Errorf("thực hiện request %s thất bại sau %d lần thử: %w", req.URL, MaxRetries, lastErr)
+	return nil, attempts, lastErr
 }
 
 type ClientRequest struct {
@@ -213,6 +306,10 @@ type ClientRequest struct {
 	URL    string
 	Body   string
 	IsAjax bool
+	// RequiresBody đánh dấu endpoint luôn phải trả về dữ liệu (vd. /ajax/item,
+	// /ajax/player). Khi Cloudflare chặn, các endpoint này trả 200 với body rỗng
+	// nên cần coi body rỗng là challenge thay vì "danh sách trống".
+	RequiresBody bool
 }
 
 // Warmup thực hiện một request nhẹ vào trang chủ để thu thập cookie phiên ban đầu.
@@ -232,10 +329,11 @@ func (c *Client) GetHomeItems(ctx context.Context, tabType string) ([]AnimeItem,
 	form.Set("type", tabType)
 
 	data, err := c.doRequest(ctx, &ClientRequest{
-		Method: http.MethodPost,
-		URL:    c.baseURL + "/ajax/item",
-		Body:   form.Encode(),
-		IsAjax: true,
+		Method:       http.MethodPost,
+		URL:          c.baseURL + "/ajax/item",
+		Body:         form.Encode(),
+		IsAjax:       true,
+		RequiresBody: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("lấy danh sách phim trang chủ (tab %s) thất bại: %w", tabType, err)
@@ -340,10 +438,11 @@ func (c *Client) GetBackupServers(ctx context.Context, episodeID string) ([]Serv
 	form.Set("backup", "1")
 
 	data, err := c.doRequest(ctx, &ClientRequest{
-		Method: http.MethodPost,
-		URL:    c.baseURL + "/ajax/player",
-		Body:   form.Encode(),
-		IsAjax: true,
+		Method:       http.MethodPost,
+		URL:          c.baseURL + "/ajax/player",
+		Body:         form.Encode(),
+		IsAjax:       true,
+		RequiresBody: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("lấy server dự phòng cho tập %s thất bại: %w", episodeID, err)
@@ -362,10 +461,11 @@ func (c *Client) ResolveServerSource(ctx context.Context, hrefToken, playTech, s
 	form.Set("backuplinks", "1")
 
 	data, err := c.doRequest(ctx, &ClientRequest{
-		Method: http.MethodPost,
-		URL:    c.baseURL + "/ajax/player",
-		Body:   form.Encode(),
-		IsAjax: true,
+		Method:       http.MethodPost,
+		URL:          c.baseURL + "/ajax/player",
+		Body:         form.Encode(),
+		IsAjax:       true,
+		RequiresBody: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("lấy nguồn phát từ server ID %s thất bại: %w", serverID, err)
@@ -382,10 +482,11 @@ func (c *Client) ResolveEpisodeByHash(ctx context.Context, epHash, epID string) 
 	form.Set("id", epID)
 
 	data, err := c.doRequest(ctx, &ClientRequest{
-		Method: http.MethodPost,
-		URL:    c.baseURL + "/ajax/player",
-		Body:   form.Encode(),
-		IsAjax: true,
+		Method:       http.MethodPost,
+		URL:          c.baseURL + "/ajax/player",
+		Body:         form.Encode(),
+		IsAjax:       true,
+		RequiresBody: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("đổi tập qua hash (tập %s) thất bại: %w", epID, err)

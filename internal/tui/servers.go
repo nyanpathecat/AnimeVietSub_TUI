@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"avs-tui/internal/api"
 	"avs-tui/internal/config"
@@ -112,7 +111,7 @@ func (m *ServersModel) LoadServers(animeTitle string, animeURL string, ep api.Ep
 
 func (m ServersModel) fetchBackupServers(epID string) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), api.FetchTimeout)
 		defer cancel()
 
 		servers, err := m.client.GetBackupServers(ctx, epID)
@@ -125,7 +124,7 @@ func (m ServersModel) fetchBackupServers(epID string) tea.Cmd {
 
 func (m ServersModel) resolveServer(server api.ServerItem) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), api.FetchTimeout)
 		defer cancel()
 
 		resp, err := m.client.ResolveServerSource(ctx, server.HrefToken, server.PlayTech, server.ID)
@@ -141,7 +140,7 @@ func (m ServersModel) resolveEpisodeByHash() tea.Cmd {
 	id := m.episode.ID
 
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), api.FetchTimeout)
 		defer cancel()
 
 		resp, err := m.client.ResolveEpisodeByHash(ctx, hash, id)

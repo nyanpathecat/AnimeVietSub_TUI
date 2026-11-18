@@ -1,0 +1,84 @@
+name: Release
+
+# Tự build avs.exe (Windows) và đính kèm vào GitHub Release khi push tag.
+# Asset được upload:
+#   avs.exe                 - binary Windows amd64 (README + install.ps1)
+#   avs_windows_amd64       - tên install.sh kỳ vọng (fallback avs.exe)
+#   avs_windows_arm64.exe   - binary Windows arm64 (install.ps1 tự chọn theo máy)
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            built: avs_windows_amd64
+            extra: avs.exe
+          - goarch: arm64
+            built: avs_windows_arm64.exe
+            extra: ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          CGO_ENABLED: '0'
+          GOOS: windows
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          go build -ldflags="-s -w" -o "dist/${{ matrix.built }}" ./cmd/avs
+          if [ -n "${{ matrix.extra }}" ]; then
+            cp "dist/${{ matrix.built }}" "dist/${{ matrix.extra }}"
+          fi
+
+      - name: Smoke-check PE header
+        run: |
+          set -euo pipefail
+          # Mỗi file Windows phải bắt đầu bằng magic "MZ" và không được rỗng.
+          for f in dist/*; do
+            [ -s "$f" ]
+            [ "$(head -c 2 "$f")" = "MZ" ]
+          done
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || true
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
